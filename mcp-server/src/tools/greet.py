@@ -16,11 +16,10 @@ def register_greet_tool(mcp: FastMCP) -> None:
             "readOnlyHint": True,
         },
         meta={
-            "_meta": {
-                "ui": {
-                    "resourceUri": "ui://widget/greet.html",
-                }
+            "ui": {
+                "resourceUri": "ui://widget/greet.html",
             },
+            "openai/outputTemplate": "ui://widget/greet.html",
             "openai/toolInvocation/invoking": "",
             "openai/toolInvocation/invoked": "",
         },
