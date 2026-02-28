@@ -1,17 +1,41 @@
-if (!window.openai) {
-  const { installOpenAIMock } = await import("./mock.js");
-  installOpenAIMock();
+if (window.parent === window) {
+  const { installPostMessageHostMock } = await import("./mock.js");
+  installPostMessageHostMock();
 }
 
 const widgetEl = document.querySelector("#greetWidget");
 
-// optional: max height vom Host übernehmen
-if (window.openai?.maxHeight) {
-  document.documentElement.style.setProperty("--max-height", `${window.openai.maxHeight}px`);
+let greetData = null;
+let rpcId = 0;
+const pendingRequests = new Map();
+
+function rpcRequest(method, params = {}) {
+  const id = `${Date.now()}-${++rpcId}`;
+
+  const request = {
+    jsonrpc: "2.0",
+    id,
+    method,
+    params,
+  };
+
+  window.parent.postMessage(request, "*");
+
+  return new Promise((resolve, reject) => {
+    pendingRequests.set(id, { resolve, reject });
+  });
 }
 
-// initiales tool output (falls Host das direkt setzt)
-let greetData = window.openai?.toolOutput ?? null;
+function rpcNotify(method, params = {}) {
+  window.parent.postMessage(
+    {
+      jsonrpc: "2.0",
+      method,
+      params,
+    },
+    "*"
+  );
+}
 
 function render() {
   if (!greetData) {
@@ -19,7 +43,6 @@ function render() {
     return;
   }
 
-  // Erwartet: { name: string, message: string }
   const name = greetData.name ?? "";
   const message = greetData.message ?? "";
 
@@ -34,20 +57,74 @@ function render() {
   `;
 }
 
-// Wenn die Runtime später neue globals (toolOutput) pusht:
-function handleSetGlobals(event) {
-  const globals = event.detail?.globals;
-  if (!globals?.toolOutput) return;
+function extractStructuredContent(params) {
+  if (!params || typeof params !== "object") {
+    return null;
+  }
 
-  greetData = globals.toolOutput;
-  render();
+  if (params.structuredContent && typeof params.structuredContent === "object") {
+    return params.structuredContent;
+  }
+
+  if (params.result?.structuredContent && typeof params.result.structuredContent === "object") {
+    return params.result.structuredContent;
+  }
+
+  return null;
 }
 
-window.addEventListener("openai:set_globals", handleSetGlobals, { passive: true });
+function handleRpcMessage(event) {
+  const data = event.data;
+  if (!data || typeof data !== "object" || data.jsonrpc !== "2.0") {
+    return;
+  }
+
+  if (data.id && (Object.hasOwn(data, "result") || Object.hasOwn(data, "error"))) {
+    const pendingRequest = pendingRequests.get(data.id);
+    if (!pendingRequest) {
+      return;
+    }
+
+    pendingRequests.delete(data.id);
+    if (Object.hasOwn(data, "error")) {
+      pendingRequest.reject(data.error);
+      return;
+    }
+
+    pendingRequest.resolve(data.result);
+    return;
+  }
+
+  if (data.method === "ui/notifications/tool-input") {
+    return;
+  }
+
+  if (data.method === "ui/notifications/tool-result") {
+    const structuredContent = extractStructuredContent(data.params);
+    if (!structuredContent) {
+      return;
+    }
+
+    greetData = {
+      name: structuredContent.name ?? "",
+      message: structuredContent.message ?? "",
+    };
+
+    render();
+  }
+}
+
+window.addEventListener("message", handleRpcMessage, { passive: true });
 
 render();
 
-// --- helpers ---
+try {
+  await rpcRequest("ui/initialize", {});
+  rpcNotify("ui/notifications/initialized", {});
+} catch (error) {
+  console.error("Failed to initialize widget bridge", error);
+}
+
 function escapeHtml(str) {
   return String(str)
     .replaceAll("&", "&amp;")

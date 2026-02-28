@@ -1,4 +1,5 @@
 from typing import Any
+
 from fastmcp import FastMCP
 from pydantic import BaseModel
 
@@ -15,11 +16,19 @@ def register_greet_tool(mcp: FastMCP) -> None:
             "readOnlyHint": True,
         },
         meta={
-            "openai/outputTemplate": "ui://widget/greet.html",
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/greet.html",
+                }
+            },
             "openai/toolInvocation/invoking": "",
             "openai/toolInvocation/invoked": "",
         },
     )
-    def greet(name: str) -> GreetResult:
+    def greet(name: str) -> dict[str, Any]:
         """Mock greet tool that returns a greeting."""
-        return GreetResult(name=name, message=f"Hello, {name} 👋")
+        result = GreetResult(name=name, message=f"Hello, {name} 👋")
+        return {
+            "structuredContent": result.model_dump(),
+            "content": [{"type": "text", "text": f"Generated greeting for {name}."}],
+        }
