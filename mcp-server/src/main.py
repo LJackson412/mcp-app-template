@@ -9,9 +9,10 @@ fastmcp.settings.stateless_http = True
 mcp = FastMCP("My MCP Server")
 
 GREET_WIDGET_HTML_PATH = Path(__file__).resolve().parents[2] / "mcp-ui" / "greet" / "greet.html"
+MCP_APP_HTML_MIME_TYPE = "text/html;profile=mcp-app"
 
 
-@mcp.resource("ui://widget/greet.html", mime_type="text/html+skybridge")
+@mcp.resource("ui://widget/greet.html", mime_type=MCP_APP_HTML_MIME_TYPE)
 def get_greet_widget() -> str:
     """Interactive HTML widget to display retrieval segments in ChatGPT."""
     if not GREET_WIDGET_HTML_PATH.exists():
